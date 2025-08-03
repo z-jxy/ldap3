@@ -180,6 +180,11 @@ pub enum LdapError {
     /// No CHALLENGE token received in NTLM exchange.
     #[error("no CHALLENGE token received in NTLM exchange")]
     NoNtlmChallengeToken,
+
+    #[cfg(feature = "ntlm")]
+    /// Invalid NTLM hash format.
+    #[error("invalid NTLM hash format: {0}")]
+    InvalidNtlmHash(String),
 }
 
 impl From<LdapError> for io::Error {

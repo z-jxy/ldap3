@@ -9,6 +9,7 @@ use crate::adapters::{EntriesOnly, IntoAdapterVec};
 use crate::controls_impl::IntoRawControlVec;
 use crate::exop::Exop;
 use crate::exop_impl::construct_exop;
+
 use crate::protocol::{LdapOp, MaybeControls, MiscSender, ResultSender};
 use crate::result::{
     CompareResult, ExopResult, LdapError, LdapResult, LdapResultExt, Result, SearchResult,
@@ -23,6 +24,9 @@ use lber::structures::{Boolean, Enumerated, Integer, Null, OctetString, Sequence
 use cross_krb5::{ClientCtx, Cred, InitiateFlags, K5Ctx, Step};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time;
+
+#[cfg(feature = "ntlm")]
+use crate::ntlm::NtlmHashBytes;
 
 /// SASL bind exchange wrapper.
 #[allow(dead_code)]
@@ -157,7 +161,7 @@ impl Ldap {
         let last_ldap_id = msgmap.0;
         let mut next_ldap_id = last_ldap_id;
         loop {
-            if next_ldap_id == std::i32::MAX {
+            if next_ldap_id == i32::MAX {
                 next_ldap_id = 1;
             } else {
                 next_ldap_id += 1;
@@ -271,6 +275,141 @@ impl Ldap {
     /// is made with the hardcoded empty authzId value.
     pub async fn sasl_external_bind(&mut self) -> Result<LdapResult> {
         let req = sasl_bind_req("EXTERNAL", Some(b""));
+        Ok(self.op_call(LdapOp::Single, req).await?.0)
+    }
+
+    #[cfg(feature = "ntlm")]
+    pub async fn sasl_ntlmv1_bind_with_hash(
+        &mut self,
+        username: &str,
+        domain: &str,
+        ntlm_hash: &NtlmHashBytes,
+    ) -> Result<LdapResult> {
+        use crate::ntlm::pth;
+        const LDAP_RESULT_SASL_BIND_IN_PROGRESS: u32 = 14;
+
+        trace!("[*] Starting NTLM pass-the-hash bind");
+
+        // Step 1: Send NTLM Type 1 message
+        let type1_msg = pth::create_ntlmv1_type1_message(domain)?;
+        let req = sasl_bind_req("GSS-SPNEGO", Some(&type1_msg));
+
+        let (res, _, token) = self.op_call(LdapOp::Single, req).await?;
+        trace!("First NTLM response: rc={}, text={:?}", res.rc, res.text);
+
+        if res.rc != LDAP_RESULT_SASL_BIND_IN_PROGRESS {
+            return Ok(res);
+        }
+
+        let challenge = match token.0 {
+            Some(token) => token,
+            _ => return Err(LdapError::NoNtlmChallengeToken),
+        };
+
+        // Step 2: Parse Type 2 message and extract server challenge
+        let (server_challenge, _target_info) = pth::parse_ntlmv1_type2_message(&challenge)?;
+
+        // let server_challenge = pth::extract_ntlm_from_spnego(&challenge).unwrap().try_into().unwrap();
+
+        trace!("Server challenge: {server_challenge:02x?}");
+
+        // let tls_endpoint_token = self.tls_endpoint_token.as_ref().clone();
+
+        let type3_msg =
+            pth::create_ntlmv1_type3_message(username, domain, ntlm_hash, &server_challenge)
+                .map_err(|e| LdapError::InvalidNtlmHash(e.to_string()))?;
+
+        // let final_msg = pth::wrap_in_simple_spnego(&type3_msg)?;
+
+        let req = sasl_bind_req("GSS-SPNEGO", Some(&type3_msg));
+        Ok(self.op_call(LdapOp::Single, req).await?.0)
+    }
+
+    #[cfg(feature = "ntlm")]
+    pub async fn sasl_ntlmv2_bind_with_hash(
+        &mut self,
+        username: &str,
+        domain: &str,
+        nt_hash: &NtlmHashBytes,
+    ) -> Result<LdapResult> {
+        use crate::ntlm::channel_binding::ChannelBindingInfo;
+        use crate::ntlm::pth;
+        const LDAP_RESULT_SASL_BIND_IN_PROGRESS: u32 = 14;
+
+        trace!("Starting NTLMv2 bind for {username}@{domain}");
+        trace!("NT Hash: {}", hex::encode(nt_hash));
+
+        // Step 1: Send Type 1
+        let type1_msg = pth::create_ntlmv2_type1_message(domain)
+            .expect("Failed to create NTLMv2 Type 1 message");
+        trace!("Type 1 message: {type1_msg:?}");
+        let req = sasl_bind_req("GSS-SPNEGO", Some(&type1_msg));
+        trace!("Type 1 message sent");
+        let (res, _, token) = self.op_call(LdapOp::Single, req).await?;
+        trace!("Type 1 response: {res:?}");
+        if res.rc != LDAP_RESULT_SASL_BIND_IN_PROGRESS {
+            trace!("Type 1 response not in progress");
+            return Ok(res);
+        }
+        trace!("Type 1 response received");
+        // Step 2: Parse Type 2 and extract challenge + target info
+        let challenge = token.0.ok_or(LdapError::NoNtlmChallengeToken)?;
+        let type2_data =
+            pth::extract_ntlm_from_spnego(&challenge).expect("Failed to extract NTLM from SPNEGO");
+        let (server_challenge, server_name) = pth::parse_ntlmv1_type2_message(&type2_data)?;
+
+        trace!("Server challenge: {}", hex::encode(server_challenge));
+        trace!("Server name length: {}", server_name.len());
+
+        trace!("Server name hex: {}", hex::encode(&server_name));
+
+        // Step 3: Calculate NTLMv2 response
+        let client_challenge = pth::generate_client_challenge();
+        trace!("Client challenge: {}", hex::encode(client_challenge));
+        debug!("using tls?: {}", self.has_tls);
+
+        let channel_binding = if self.has_tls {
+            match self.get_peer_certificate().await {
+                Ok(Some(cert_der)) => Some(ChannelBindingInfo::new_tls_server_end_point(&cert_der)),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        // Step 4: Calculate responses
+        let (ntlm_challenge_response, lm_challenge_response) = pth::compute_response_ntlmv2(
+            &server_challenge,
+            &client_challenge,
+            &server_name,
+            domain,
+            username,
+            nt_hash,
+            channel_binding,
+        )
+        .expect("Failed to compute NTLMv2 response");
+
+        trace!("NTLM response length: {}", ntlm_challenge_response.len());
+        trace!("LM response length: {}", lm_challenge_response.len());
+        trace!(
+            "NTLM response (first 32 bytes): {}",
+            hex::encode(&ntlm_challenge_response[..32.min(ntlm_challenge_response.len())])
+        );
+
+        // Step 5: Create Type 3 message - RAW NTLM, no SPNEGO
+        let type3_msg = pth::create_ntlmv2_type3_message(
+            username,
+            domain,
+            &lm_challenge_response,
+            &ntlm_challenge_response,
+        )
+        .expect("Failed to create NTLMv2 Type 3 message");
+
+        trace!("Type 3 message: {type3_msg:?}");
+
+        // Step 5: Send the final response
+        let req = sasl_bind_req("GSS-SPNEGO", Some(&type3_msg));
+
         Ok(self.op_call(LdapOp::Single, req).await?.0)
     }
 
@@ -446,8 +585,8 @@ impl Ldap {
 
         use sspi::{
             builders::AcquireCredentialsHandleResult, AuthIdentity, AuthIdentityBuffers,
-            ClientRequestFlags, CredentialUse, DataRepresentation, Ntlm, OwnedSecurityBuffer,
-            SecurityBufferType, SecurityStatus, Sspi, SspiImpl, Username,
+            BufferType, ClientRequestFlags, CredentialUse, DataRepresentation, Ntlm,
+            SecurityBuffer, SecurityStatus, Sspi, SspiImpl, Username,
         };
 
         fn step(
@@ -455,14 +594,8 @@ impl Ldap {
             acq_creds: &mut AcquireCredentialsHandleResult<Option<AuthIdentityBuffers>>,
             input: &[u8],
         ) -> Result<Vec<u8>> {
-            let mut input = vec![OwnedSecurityBuffer::new(
-                input.to_vec(),
-                SecurityBufferType::Token,
-            )];
-            let mut output = vec![OwnedSecurityBuffer::new(
-                Vec::new(),
-                SecurityBufferType::Token,
-            )];
+            let mut input = vec![SecurityBuffer::new(input.to_vec(), BufferType::Token)];
+            let mut output = vec![SecurityBuffer::new(Vec::new(), BufferType::Token)];
             let mut builder = ntlm
                 .initialize_security_context()
                 .with_credentials_handle(&mut acq_creds.credentials_handle)

@@ -121,6 +121,40 @@ impl LdapConn {
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "ntlm")))]
+    // #[cfg(feature = "ntlm")]
+    /// See [`Ldap::sasl_ntlm_bind_with_hash()`](struct.Ldap.html#method.sasl_ntlm_bind_with_hash).
+    pub fn sasl_ntlm_bind_with_hash(
+        &mut self,
+        username: &str,
+        domain: &str,
+        ntlm_hash: impl AsRef<crate::ntlm::NtlmHash>,
+    ) -> Result<LdapResult> {
+        let rt = &mut self.rt;
+        let ldap = &mut self.ldap;
+        rt.block_on(async move {
+            ldap.sasl_ntlmv1_bind_with_hash(username, domain, ntlm_hash.as_ref().as_bytes())
+                .await
+        })
+    }
+
+    #[cfg_attr(docsrs, doc(cfg(feature = "ntlm")))]
+    #[cfg(feature = "ntlm")]
+    /// See [`Ldap::sasl_ntlmv2_bind_with_hash()`](struct.Ldap.html#method.sasl_ntlm_bind_with_hash).
+    pub fn sasl_ntlmv2_bind_with_hash(
+        &mut self,
+        username: &str,
+        domain: &str,
+        ntlm_hash: impl AsRef<crate::ntlm::NtlmHash>,
+    ) -> Result<LdapResult> {
+        let rt = &mut self.rt;
+        let ldap = &mut self.ldap;
+        rt.block_on(async move {
+            ldap.sasl_ntlmv2_bind_with_hash(username, domain, ntlm_hash.as_ref().as_bytes())
+                .await
+        })
+    }
+
+    #[cfg_attr(docsrs, doc(cfg(feature = "ntlm")))]
     #[cfg(feature = "ntlm")]
     /// See [`Ldap::sasl_ntlm_bind()`](struct.Ldap.html#method.sasl_ntlm_bind).
     pub fn sasl_ntlm_bind(&mut self, username: &str, password: &str) -> Result<LdapResult> {
