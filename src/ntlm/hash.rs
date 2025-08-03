@@ -58,3 +58,11 @@ impl AsRef<NtlmHash> for NtlmHash {
         self
     }
 }
+
+impl std::ops::Deref for NtlmHash {
+    type Target = NtlmHashBytes;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
