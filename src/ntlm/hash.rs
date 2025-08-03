@@ -1,4 +1,5 @@
-pub struct NtlmHash([u8; 16]);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NtlmHash(NtlmHashBytes);
 
 pub type NtlmHashBytes = [u8; 16];
 
