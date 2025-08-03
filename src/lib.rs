@@ -258,4 +258,11 @@ pub use search::{
 };
 #[cfg(feature = "sync")]
 pub use sync::{EntryStream, LdapConn};
-pub use util::{LdapUrlExt, LdapUrlParams, dn_escape, get_url_params, ldap_escape, ldap_unescape};
+#[allow(deprecated)]
+pub use util::{
+    LdapUrlExt, LdapUrlParams, dn_escape, get_url_params, ldap_escape, ldap_str_unescape,
+    ldap_unescape,
+};
+
+#[cfg(feature = "ntlm")]
+pub use ntlm::NtlmHash;

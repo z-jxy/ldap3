@@ -1,5 +1,4 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NtlmHash(NtlmHashBytes);
+pub struct NtlmHash([u8; 16]);
 
 pub type NtlmHashBytes = [u8; 16];
 
@@ -45,24 +44,8 @@ impl TryFrom<&str> for NtlmHash {
     }
 }
 
-impl std::str::FromStr for NtlmHash {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        NtlmHash::try_from(s)
-    }
-}
-
 impl AsRef<NtlmHash> for NtlmHash {
     fn as_ref(&self) -> &NtlmHash {
         self
-    }
-}
-
-impl std::ops::Deref for NtlmHash {
-    type Target = NtlmHashBytes;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }

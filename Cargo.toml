@@ -63,8 +63,9 @@ tls-rustls-ring = ["tls-rustls","rustls/ring","rustls-provider"]
 tls-rustls-aws-lc-rs = ["tls-rustls","rustls/aws_lc_rs","rustls-provider"]
 rustls-provider = []
 sync = ["tokio/rt"]
-gssapi = ["cross-krb5","dep:ring","dep:either"]
-ntlm = ["sspi","dep:ring"]
+
+gssapi = ["cross-krb5", "dep:ring", "dep:either"]
+ntlm = ["sspi","dep:ring", "dep:hmac", "dep:md4", "dep:md-5", "dep:byteorder", "dep:hex", "dep:des", "dep:rand", "dep:sha2"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "io-util", "sync", "time", "net", "rt-multi-thread"] }
