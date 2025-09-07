@@ -5,6 +5,7 @@ use std::sync::RwLock;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::RequestId;
 use crate::adapters::{EntriesOnly, IntoAdapterVec};
 use crate::controls_impl::IntoRawControlVec;
 use crate::exop::Exop;
@@ -15,7 +16,6 @@ use crate::result::{
     CompareResult, ExopResult, LdapError, LdapResult, LdapResultExt, Result, SearchResult,
 };
 use crate::search::{Scope, SearchOptions, SearchStream};
-use crate::RequestId;
 
 use lber::common::TagClass;
 use lber::structures::{Boolean, Enumerated, Integer, Null, OctetString, Sequence, Set, Tag};
@@ -516,7 +516,7 @@ impl Ldap {
             _ => {
                 return Err(LdapError::GssapiOperationError(String::from(
                     "GSSAPI exchange not finished or has an additional token",
-                )))
+                )));
             }
         };
         let req = sasl_bind_req("GSSAPI", None);
@@ -583,9 +583,9 @@ impl Ldap {
         const LDAP_RESULT_SASL_BIND_IN_PROGRESS: u32 = 14;
 
         use sspi::{
-            builders::AcquireCredentialsHandleResult, AuthIdentity, AuthIdentityBuffers,
-            BufferType, ClientRequestFlags, CredentialUse, DataRepresentation, Ntlm,
-            SecurityBuffer, SecurityStatus, Sspi, SspiImpl, Username,
+            AuthIdentity, AuthIdentityBuffers, BufferType, ClientRequestFlags, CredentialUse,
+            DataRepresentation, Ntlm, SecurityBuffer, SecurityStatus, Sspi, SspiImpl, Username,
+            builders::AcquireCredentialsHandleResult,
         };
 
         fn step(
