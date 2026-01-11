@@ -23,6 +23,7 @@ async fn main() -> Result<()> {
             vec!["l"],
         )
         .await?;
+    #[allow(clippy::never_loop)]
     while let Some(_r) = stream.next().await? {
         break;
     }

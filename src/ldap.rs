@@ -26,7 +26,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time;
 
 #[cfg(feature = "ntlm")]
-use crate::ntlm::NtlmHashBytes;
+use sspi::NtlmHashBytes;
 
 /// SASL bind exchange wrapper.
 #[allow(dead_code)]
@@ -322,6 +322,88 @@ impl Ldap {
         // let final_msg = pth::wrap_in_simple_spnego(&type3_msg)?;
 
         let req = sasl_bind_req("GSS-SPNEGO", Some(&type3_msg));
+        Ok(self.op_call(LdapOp::Single, req).await?.0)
+    }
+
+    #[cfg(feature = "ntlm")]
+    pub async fn sasl_ntlmv1_bind_with_hash_sspi(
+        &mut self,
+        username: &str,
+        domain: &str,
+        ntlm_hash: &sspi::NtlmHashBytes,
+    ) -> Result<LdapResult> {
+        const LDAP_RESULT_SASL_BIND_IN_PROGRESS: u32 = 14;
+
+        trace!("[*] Starting NTLM pass-the-hash bind (sspi)");
+
+        use sspi::{
+            AuthIdentityBuffers, BufferType, ClientRequestFlags, DataRepresentation, Ntlm,
+            SecurityBuffer, SecurityStatus, Sspi, SspiImpl,
+        };
+
+        // Helper to perform NTLM steps
+        fn ntlm_step(
+            ntlm: &mut Ntlm,
+            acq_creds: &mut Option<AuthIdentityBuffers>,
+            input: &[u8],
+        ) -> Result<Vec<u8>> {
+            let mut input = vec![SecurityBuffer::new(input.to_vec(), BufferType::Token)];
+            let mut output = vec![SecurityBuffer::new(Vec::new(), BufferType::Token)];
+
+            let mut builder = ntlm
+                .initialize_security_context()
+                .with_credentials_handle(acq_creds)
+                .with_context_requirements(ClientRequestFlags::ALLOCATE_MEMORY)
+                .with_target_data_representation(DataRepresentation::Native)
+                .with_input(&mut input)
+                .with_output(&mut output);
+
+            let result = ntlm
+                .initialize_security_context_impl(&mut builder)?
+                .resolve_to_result()?;
+
+            match result.status {
+                SecurityStatus::CompleteNeeded | SecurityStatus::CompleteAndContinue => {
+                    ntlm.complete_auth_token(&mut output)?
+                }
+                s => s,
+            };
+
+            Ok(output.swap_remove(0).buffer)
+        }
+
+        // Create credentials with NT hash
+        let credentials = AuthIdentityBuffers::from_utf8_with_hash(username, domain, *ntlm_hash);
+
+        let mut ntlm = Ntlm::new();
+
+        // Set channel bindings (sspi-rs handles the rest)
+        if self.has_tls {
+            if let Ok(Some(cert_der)) = self.get_peer_certificate().await {
+                ntlm.set_channel_bindings(&cert_der);
+            }
+        }
+
+        let mut acq_creds = Some(credentials);
+
+        // Send NEGOTIATE (Type 1)
+        let req = sasl_bind_req(
+            "GSS-SPNEGO",
+            Some(&ntlm_step(&mut ntlm, &mut acq_creds, &[])?),
+        );
+        let (res, _, token) = self.op_call(LdapOp::Single, req).await?;
+
+        if res.rc != LDAP_RESULT_SASL_BIND_IN_PROGRESS {
+            return Ok(res);
+        }
+
+        let token = token.0.ok_or(LdapError::NoNtlmChallengeToken)?;
+
+        // Process CHALLENGE (Type 2) and send AUTHENTICATE (Type 3)
+        let req = sasl_bind_req(
+            "GSS-SPNEGO",
+            Some(&ntlm_step(&mut ntlm, &mut acq_creds, &token)?),
+        );
         Ok(self.op_call(LdapOp::Single, req).await?.0)
     }
 
