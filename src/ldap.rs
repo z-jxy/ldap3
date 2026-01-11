@@ -25,9 +25,6 @@ use cross_krb5::{ClientCtx, Cred, InitiateFlags, K5Ctx, Step};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time;
 
-#[cfg(feature = "ntlm")]
-use sspi::NtlmHashBytes;
-
 /// SASL bind exchange wrapper.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
