@@ -1,7 +1,7 @@
 //! This example requires the "ntlm" feature to be enabled
 //! Run with: cargo run --example ntlm_hash_bind --features ntlm
 
-use ldap3::{result::Result, LdapConn};
+use ldap3::{LdapConn, result::Result};
 
 /// Convert domain to LDAP base DN format
 fn domain_to_base(domain: &str) -> String {
@@ -69,38 +69,6 @@ fn main() -> Result<()> {
 
         ldap.unbind()?;
     }
-
-    // println!("\n[*] NTLMv2 authentication");
-    // #[cfg(feature = "ntlm")]
-    // {
-    //     let settings = ldap3::LdapConnSettings::new()
-    //         // .set_use_tls(true) // Use TLS for secure connection
-    //         .set_no_tls_verify(true); // Disable TLS verification for this example
-    //                                   // .(None); // No channel bindings for this example
-    //                                   // let mut ldap = LdapConn::new(&format!("ldap://{host}:389"))?;
-    //     let mut ldap = LdapConn::with_settings(settings, &format!("ldaps://{host}:636"))?;
-    //     let res = ldap.sasl_ntlmv2_bind_with_hash(username, domain, ntlm_hash)?;
-
-    //     if res.rc != 0 {
-    //         eprintln!("NTLMv2 hash authentication failed: {res}");
-    //         return Err(res.into());
-    //     }
-
-    //     println!("[+] NTLMv2 hash authentication successful");
-
-    //     let (entries, _) = ldap
-    //         .search(
-    //             &base,
-    //             ldap3::Scope::Subtree,
-    //             "(objectClass=person)",
-    //             vec!["cn", "name"],
-    //         )?
-    //         .success()?;
-
-    //     println!("[+] Num entries (objectClass=person): {:?}", entries.len());
-
-    //     ldap.unbind()?;
-    // }
 
     Ok(())
 }

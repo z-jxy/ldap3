@@ -42,14 +42,14 @@ sspi = { git = "https://github.com/z-jxy/sspi-rs", branch = "feature/pass-the-ha
 async-trait = "0.1.89"
 
 # ntlm support
-hmac = { version = "0.12", optional = true }
-md4 = { version = "0.10", optional = true }
-md-5 = { version = "0.10", optional = true }
-byteorder = { version = "1.4", optional = true }
-hex = { version = "0.4.3", optional = true }
-des = { version = "0.8.1", optional = true }
-rand = { version = "0.9.2", optional = true }
-sha2 = { version = "0.10.9", optional = true }
+# hmac = { version = "0.12", optional = true }
+# md4 = { version = "0.10", optional = true }
+# md-5 = { version = "0.10", optional = true }
+# byteorder = { version = "1.4", optional = true }
+# hex = { version = "0.4.3", optional = true }
+# des = { version = "0.8.1", optional = true }
+# rand = { version = "0.9.2", optional = true }
+# sha2 = { version = "0.10.9", optional = true }
 
 [dependencies.lber]
 path = "lber"
@@ -66,7 +66,9 @@ rustls-provider = []
 sync = ["tokio/rt"]
 
 gssapi = ["cross-krb5", "dep:ring", "dep:either"]
-ntlm = ["sspi","dep:ring", "dep:hmac", "dep:md4", "dep:md-5", "dep:byteorder", "dep:hex", "dep:des", "dep:rand", "dep:sha2"]
+ntlm = ["sspi","dep:ring", 
+# "dep:hmac", "dep:md4", "dep:md-5", "dep:byteorder", "dep:hex", "dep:des", "dep:rand", "dep:sha2"
+]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "io-util", "sync", "time", "net", "rt-multi-thread"] }

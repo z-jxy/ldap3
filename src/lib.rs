@@ -239,8 +239,6 @@ pub mod exop {
 }
 mod filter;
 mod ldap;
-#[cfg(feature = "ntlm")]
-pub mod ntlm;
 mod protocol;
 pub mod result;
 mod search;
@@ -262,4 +260,4 @@ pub use sync::{EntryStream, LdapConn};
 pub use util::{LdapUrlExt, LdapUrlParams, dn_escape, get_url_params, ldap_escape, ldap_unescape};
 
 #[cfg(feature = "ntlm")]
-pub use ntlm::NtlmHash;
+pub use sspi::NtlmHash;
