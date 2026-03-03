@@ -15,28 +15,28 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Debug)
-        .init();
-
-    let args = std::env::args().collect::<Vec<_>>();
-    if args.len() != 5 {
-        eprintln!("Usage: {} <host> <username> <domain> <ntlm_hash>", args[0]);
-        return Ok(());
-    }
-
-    let host = &args[1];
-    let username = &args[2];
-    let domain = &args[3];
-    let Ok(ntlm_hash) = args[4].as_str().parse() else {
-        eprintln!("Invalid NTLM hash format. Expected format: <hash>");
-        std::process::exit(1);
-    };
-
-    let base = domain_to_base(domain);
-
     #[cfg(feature = "ntlm")]
     {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Debug)
+            .init();
+
+        let args = std::env::args().collect::<Vec<_>>();
+        if args.len() != 5 {
+            eprintln!("Usage: {} <host> <username> <domain> <ntlm_hash>", args[0]);
+            return Ok(());
+        }
+
+        let host = &args[1];
+        let username = &args[2];
+        let domain = &args[3];
+        let Ok(ntlm_hash) = args[4].as_str().parse() else {
+            eprintln!("Invalid NTLM hash format. Expected format: <hash>");
+            std::process::exit(1);
+        };
+
+        let base = domain_to_base(domain);
+
         let mut ldap = LdapConn::new(&format!("ldap://{host}:389"))?;
 
         let res = ldap.sasl_ntlm_bind_with_hash(username, domain, &ntlm_hash)?;
